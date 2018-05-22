@@ -209,10 +209,9 @@ namespace videocore { namespace iOS {
     m_catchingUp(false),
     m_epoch(std::chrono::steady_clock::now())
     {
+        // @donuts-kris: this will raise a pointer alignment error
         PERF_GL_sync({
-            
-            this->setupGLES(excludeContext);
-            
+            this->setupGLES(nullptr);
         });
         m_zRange.first = INT_MAX;
         m_zRange.second = INT_MIN;
