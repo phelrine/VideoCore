@@ -120,16 +120,14 @@ namespace videocore { namespace iOS {
         ref->setState(kVCPixelBufferStateAcquired);
         
         if(it == m_pixelBuffers.end()) {
-            PERF_GL_async({
+            ref->lock(true);
+            OSType format = (OSType)ref->pixelFormat();
+            bool is32bit = true;
                 
-                ref->lock(true);
-                OSType format = (OSType)ref->pixelFormat();
-                bool is32bit = true;
-                
-                is32bit = (format != kCVPixelFormatType_16LE565);
+            is32bit = (format != kCVPixelFormatType_16LE565);
      
-                CVOpenGLESTextureRef texture = nullptr;
-                CVReturn ret = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+            CVOpenGLESTextureRef texture = nullptr;
+            CVReturn ret = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
                                                                             textureCache,
                                                                             ref->cvBuffer(),
                                                                             NULL,
@@ -142,25 +140,25 @@ namespace videocore { namespace iOS {
                                                                             0,
                                                                             &texture);
                 
-                ref->unlock(true);
-                if(ret == noErr && texture) {
-                    glBindTexture(GL_TEXTURE_2D, CVOpenGLESTextureGetName(texture));
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            ref->unlock(true);
+            if(ret == noErr && texture) {
+                glBindTexture(GL_TEXTURE_2D, CVOpenGLESTextureGetName(texture));
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                     
-                    auto iit = this->m_pixelBuffers.emplace(ref->cvBuffer(), ref).first;
-                    iit->second.texture = texture;
+                auto iit = this->m_pixelBuffers.emplace(ref->cvBuffer(), ref).first;
+                iit->second.texture = texture;
                     
-                    this->m_currentBuffer = ref;
-                    this->m_currentTexture = texture;
-                    iit->second.time = now;
+                this->m_currentBuffer = ref;
+                this->m_currentTexture = texture;
+                iit->second.time = now;
                     
-                } else {
-                    DLog("%d: Error creating texture! (%ld)", __LINE__, (long)ret);
-                }
-            });
+            } else {
+                DLog("%d: Error creating texture! (%ld)", __LINE__, (long)ret);
+            }
+
             flush = true;
         } else {
 
@@ -170,23 +168,20 @@ namespace videocore { namespace iOS {
             
         }
         
-        PERF_GL_async({
-            //const auto currentBuffer = this->m_currentBuffer->cvBuffer();
-            for ( auto it = this->m_pixelBuffers.begin() ; it != m_pixelBuffers.end() ; ) {
+        //const auto currentBuffer = this->m_currentBuffer->cvBuffer();
+        for ( auto it = this->m_pixelBuffers.begin() ; it != m_pixelBuffers.end() ; ) {
                 
-                if ( (it->second.buffer->isTemporary()) && it->second.buffer->cvBuffer() != this->m_currentBuffer->cvBuffer() ) {
-                    // Buffer is temporary, release it.
-                    it = this->m_pixelBuffers.erase(it);
-                } else {
-                    ++ it;
-                }
+            if ( (it->second.buffer->isTemporary()) && it->second.buffer->cvBuffer() != this->m_currentBuffer->cvBuffer() ) {
+                // Buffer is temporary, release it.
+                it = this->m_pixelBuffers.erase(it);
+            } else {
+                ++ it;
+            }
                 
-            }
-            if(flush) {
-                CVOpenGLESTextureCacheFlush(textureCache, 0);
-            }
-            
-        });
+        }
+        if(flush) {
+            CVOpenGLESTextureCacheFlush(textureCache, 0);
+        }
     }
     // -------------------------------------------------------------------------
     //
@@ -509,68 +504,67 @@ namespace videocore { namespace iOS {
                 locked[current_fb] = true;
                 
                 m_mixing = true;
-                PERF_GL_async({
-                    glPushGroupMarkerEXT(0, "Videocore.Mix");
-                    glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo[current_fb]);
+
+                glPushGroupMarkerEXT(0, "Videocore.Mix");
+                glBindFramebuffer(GL_FRAMEBUFFER, this->m_fbo[current_fb]);
                     
-                    IVideoFilter* currentFilter = nil;
-                    glClear(GL_COLOR_BUFFER_BIT);
-                    for ( int i = m_zRange.first ; i <= m_zRange.second ; ++i) {
+                IVideoFilter* currentFilter = nil;
+                glClear(GL_COLOR_BUFFER_BIT);
+                for ( int i = m_zRange.first ; i <= m_zRange.second ; ++i) {
                         
-                        for ( auto it = this->m_layerMap[i].begin() ; it != this->m_layerMap[i].end() ; ++ it) {
-                            CVOpenGLESTextureRef texture = NULL;
-                            auto filterit = m_sourceFilters.find(*it);
-                            if(filterit == m_sourceFilters.end()) {
-                                IFilter* filter = m_filterFactory.filter("com.videocore.filters.bgra");
-                                m_sourceFilters[*it] = dynamic_cast<IVideoFilter*>(filter);
+                    for ( auto it = this->m_layerMap[i].begin() ; it != this->m_layerMap[i].end() ; ++ it) {
+                        CVOpenGLESTextureRef texture = NULL;
+                        auto filterit = m_sourceFilters.find(*it);
+                        if(filterit == m_sourceFilters.end()) {
+                            IFilter* filter = m_filterFactory.filter("com.videocore.filters.bgra");
+                            m_sourceFilters[*it] = dynamic_cast<IVideoFilter*>(filter);
+                        }
+                        if(currentFilter != m_sourceFilters[*it]) {
+                            if(currentFilter) {
+                                currentFilter->unbind();
                             }
-                            if(currentFilter != m_sourceFilters[*it]) {
-                                if(currentFilter) {
-                                    currentFilter->unbind();
-                                }
-                                currentFilter = m_sourceFilters[*it];
+                            currentFilter = m_sourceFilters[*it];
                                 
-                                if(currentFilter && !currentFilter->initialized()) {
-                                    currentFilter->initialize();
-                                }
-                            }
-                            
-                            auto iTex = this->m_sourceBuffers.find(*it);
-                            if(iTex == this->m_sourceBuffers.end()) continue;
-                            
-                            texture = iTex->second.currentTexture();
-                            
-                            // TODO: Add blending.
-                            if(iTex->second.blends()) {
-                                glEnable(GL_BLEND);
-                                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                            }
-                            if(texture && currentFilter) {
-                                currentFilter->incomingMatrix(this->m_sourceMats[*it]);
-                                currentFilter->bind();
-                                glBindTexture(GL_TEXTURE_2D, CVOpenGLESTextureGetName(texture));
-                                glDrawArrays(GL_TRIANGLES, 0, 6);
-                            } else {
-                                DLog("Null texture!");
-                            }
-                            if(iTex->second.blends()) {
-                                glDisable(GL_BLEND);
+                            if(currentFilter && !currentFilter->initialized()) {
+                                currentFilter->initialize();
                             }
                         }
+                            
+                        auto iTex = this->m_sourceBuffers.find(*it);
+                        if(iTex == this->m_sourceBuffers.end()) continue;
+                            
+                        texture = iTex->second.currentTexture();
+                            
+                        // TODO: Add blending.
+                        if(iTex->second.blends()) {
+                            glEnable(GL_BLEND);
+                            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                        }
+                        if(texture && currentFilter) {
+                            currentFilter->incomingMatrix(this->m_sourceMats[*it]);
+                            currentFilter->bind();
+                            glBindTexture(GL_TEXTURE_2D, CVOpenGLESTextureGetName(texture));
+                            glDrawArrays(GL_TRIANGLES, 0, 6);
+                        } else {
+                            DLog("Null texture!");
+                        }
+                        if(iTex->second.blends()) {
+                            glDisable(GL_BLEND);
+                        }
                     }
-                    glFlush();
-                    glPopGroupMarkerEXT();
-                    
-                    
-                    auto lout = this->m_output.lock();
-                    if(lout) {
+                }
+                glFlush();
+                glPopGroupMarkerEXT();
+                
+                
+                auto lout = this->m_output.lock();
+                if(lout) {
                         
-                        MetaData<'vide'> md(std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - m_epoch).count());
-                        lout->pushBuffer((uint8_t*)this->m_pixelBuffer[!current_fb], sizeof(this->m_pixelBuffer[!current_fb]), md);
+                    MetaData<'vide'> md(std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - m_epoch).count());
+                    lout->pushBuffer((uint8_t*)this->m_pixelBuffer[!current_fb], sizeof(this->m_pixelBuffer[!current_fb]), md);
                     }
-                    this->m_mixing = false;
+                this->m_mixing = false;
         
-                });
                 current_fb = !current_fb;
             }
             
