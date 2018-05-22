@@ -488,13 +488,13 @@ namespace videocore { namespace iOS {
             if(now >= (m_nextMixTime)) {
                 
                 auto currentTime = m_nextMixTime;
-                if(!m_shouldSync) {
-                    m_nextMixTime += us;
-                } else {
+                // @donuts-kris: this will raise invalid bool load
+                //if(!m_shouldSync) {
+                //    m_nextMixTime += us;
+                //} else {
                     m_nextMixTime = m_syncPoint > m_nextMixTime ? m_syncPoint + us : m_nextMixTime + us;
-                }
-                
-                
+                //}
+
                 if(m_mixing.load() || m_paused.load()) {
                     continue;
                 }
