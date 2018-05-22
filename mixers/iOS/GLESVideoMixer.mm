@@ -227,6 +227,12 @@ namespace videocore { namespace iOS {
         m_output.reset();
         m_exiting = true;
         m_mixThreadCond.notify_all();
+        
+        // @donuts-kris: move to here, reason: https://github.com/jgh-/VideoCore-Inactive/pull/342
+        if(m_mixThread.joinable()) {
+            m_mixThread.join();
+        }
+        
         DLog("GLESVideoMixer::~GLESVideoMixer()");
         PERF_GL_sync({
             //glDeleteProgram(m_prog);
@@ -250,9 +256,6 @@ namespace videocore { namespace iOS {
             [(id)m_glesCtx release];
         });
         
-        if(m_mixThread.joinable()) {
-            m_mixThread.join();
-        }
         m_glJobQueue.mark_exiting();
         m_glJobQueue.enqueue_sync([](){});
 
