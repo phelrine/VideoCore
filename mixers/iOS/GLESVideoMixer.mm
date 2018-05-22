@@ -46,11 +46,13 @@
 // Convenience macro to dispatch an OpenGL ES job to the created videocore::JobQueue
 #define PERF_GL(x, dispatch) do {\
 m_glJobQueue.dispatch([=](){\
-EAGLContext* cur = [EAGLContext currentContext];\
+__weak EAGLContext* cur = [EAGLContext currentContext];\
+if (cur != nil) glFlush();\
 if(m_glesCtx) {\
 [EAGLContext setCurrentContext:(EAGLContext*)m_glesCtx];\
 }\
 x ;\
+if (m_glesCtx != nil) glFlush();\
 [EAGLContext setCurrentContext:cur];\
 });\
 } while(0)
@@ -209,6 +211,9 @@ namespace videocore { namespace iOS {
     m_catchingUp(false),
     m_epoch(std::chrono::steady_clock::now())
     {
+        glFlush();
+        [EAGLContext setCurrentContext:nil];
+        
         // @donuts-kris: this will raise a pointer alignment error
         PERF_GL_sync({
             this->setupGLES(nullptr);
@@ -218,7 +223,6 @@ namespace videocore { namespace iOS {
         
         m_callbackSession = [[GLESObjCCallback alloc] init];
         [(GLESObjCCallback*)m_callbackSession setMixer:this];
-        
     }
     
     GLESVideoMixer::~GLESVideoMixer()
@@ -278,8 +282,11 @@ namespace videocore { namespace iOS {
             std::cerr << "Error! Unable to create an OpenGL ES 2.0 or 3.0 Context!" << std::endl;
             return;
         }
-        [EAGLContext setCurrentContext:nil];
+
+        if ([EAGLContext currentContext] != nil)
+            glFlush();
         [EAGLContext setCurrentContext:(EAGLContext*)m_glesCtx];
+
         if(excludeContext) {
             excludeContext(m_glesCtx);
         }
