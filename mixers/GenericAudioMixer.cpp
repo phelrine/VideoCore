@@ -76,6 +76,13 @@ static const float kE = 2.7182818284590f;
 
 namespace videocore {
 
+    template <class Rep, class Period, class = std::enable_if_t<
+       std::chrono::duration<Rep, Period>::min() < std::chrono::duration<Rep, Period>::zero()>>
+    constexpr std::chrono::duration<Rep, Period> abs(std::chrono::duration<Rep, Period> d)
+    {
+        return d >= d.zero() ? d : -d;
+    }
+
     inline int16_t TPMixSamples(int16_t a, int16_t b) {
         return
         // If both samples are negative, mixed signal must have an amplitude between the lesser of A and B, and the minimum permissible negative amplitude
@@ -205,8 +212,9 @@ namespace videocore {
                     const auto hash = std::hash<std::shared_ptr<ISource>>()(lSource);
                     
                     auto it = m_lastSampleTime.find(hash);
-                    
-                    if(it != m_lastSampleTime.end() && (mixTime - it->second) < std::chrono::microseconds(int64_t(m_frameDuration * 0.25e6f))) {
+
+                    // when time pass (mixTime - it->second) will be negative number, use abs to compare
+                    if(it != m_lastSampleTime.end() && abs(mixTime - it->second) < std::chrono::microseconds(int64_t(m_frameDuration * 0.25e6f))) {
                         mixTime = it->second;
                     }
                     
@@ -218,7 +226,6 @@ namespace videocore {
 
                     if(diff > 0) {
                         startOffset = size_t((float(diff) / 1.0e6f) * m_outFrequencyInHz * m_bytesPerSample) & ~(m_bytesPerSample-1);
-                        
                         while ( startOffset >= window->size ) {
                             startOffset = (startOffset - window->size);
                             window = window->next;
